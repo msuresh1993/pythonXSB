@@ -1,0 +1,1 @@
+?-consult(call_py, [cc_opts('-I~muthukumar/Python-2.7.2/Include -I/home/muthukumar/Desktop/CSE523/xsb-src/XSB/emu')]).
