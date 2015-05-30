@@ -35,6 +35,7 @@ int find_prolog_term_type(prolog_term term){
 	else 
 		return -1;
 }
+
 int find_length_prolog_list(prolog_term V){
 	prolog_term temp = V;
 	int count= 0;
@@ -42,23 +43,23 @@ int find_length_prolog_list(prolog_term V){
 		p2p_car(temp);
 		count++;
 		temp = p2p_cdr(temp);
-
 	}
 	return count;
 }
+
 int return_to_prolog(PyObject *pValue){
 	if(PyInt_Check(pValue)){
 		int result = PyInt_AS_LONG(pValue);
-		extern_ctop_int(4, result);
+		extern_ctop_int(3, result);
 		return 1;
 	}
 	else if(PyFloat_Check(pValue)){
 		float result = PyFloat_AS_DOUBLE(pValue);
-		extern_ctop_float(4, result);
+		extern_ctop_float(3, result);
 		return 1;
 	}else if(PyString_Check(pValue)){
 		char *result = PyString_AS_STRING(pValue);
-		extern_ctop_string(4, result);
+		extern_ctop_string(3, result);
 		return 1;
 	}else if(PyList_Check(pValue)){
 		size_t size = PyList_Size(pValue);
@@ -75,7 +76,7 @@ int return_to_prolog(PyObject *pValue){
 			tail = p2p_cdr(tail);
 		}
 		c2p_nil(CTXTc tail);
-		p2p_unify(P, reg_term(CTXTc 4));
+		p2p_unify(P, reg_term(CTXTc 3));
 		return 1;
 	}
 	return 0;
@@ -94,6 +95,7 @@ void prlist2pyList(prolog_term V, PyObject *pList, int count){
 		temp = p2p_cdr(temp);
 	}	
 }
+
 //todo: need to refactor this code.
 int callpy(CTXTdecl){
 	setenv("PYTHONPATH", ".", 1);
@@ -103,12 +105,13 @@ int callpy(CTXTdecl){
 	prolog_term V, temp;
 	Py_Initialize();
 	char *module = ptoc_string(CTXTdeclc 1);
-	char *function = ptoc_string(CTXTdeclc 2);
+	//char *function = ptoc_string(CTXTdeclc 2);
 	pName = PyString_FromString(module);
 	pModule = PyImport_Import(pName);
 	Py_DECREF(pName);
 //	printf("%s %s", module, function);
-	V = extern_reg_term(3);
+	V = extern_reg_term(2);
+	char *function = p2c_functor(V);
 //	printf("%d",find_prolog_term_type(V));
 	if(is_functor(V)){
 		int args_count  = p2c_arity(V);
@@ -181,5 +184,4 @@ int callpy(CTXTdecl){
 		return FALSE;
 	}
 	return TRUE;
-
 }

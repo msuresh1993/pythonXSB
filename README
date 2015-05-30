@@ -1,0 +1,7 @@
+todo: need proper README
+
+To use this interface:
+1. Open the file ld_pymod.P and change the python header file directory and xsb directory 
+
+To call a python function:
+1. callpy(MODULE_NAME, FUNCTION_NAME, paraet
