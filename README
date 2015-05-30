@@ -4,4 +4,5 @@ To use this interface:
 1. Open the file ld_pymod.P and change the python header file directory and xsb directory 
 
 To call a python function:
-1. callpy(MODULE_NAME, FUNCTION_NAME, paraet
+1. callpy(MODULE_NAME, FUNCTION_NAME((parameter1,type),(parameter2,type),...),X).
+type - int, float, list, string 
