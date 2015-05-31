@@ -5,23 +5,25 @@
 //#include<alloca.h>
 #include<python2.7/Python.h>
 #include<cinterf.h>
-size_t ref_id_counter = 1;
+size_t ref_id_counter = 1; //the reference id that is passed to the prolog side
 struct pyobj_ref_node
 {
 	PyObject *python_obj;
 	size_t ref_id;
 	struct pyobj_ref_node *next;
-};
+}; // mapping of the python object to the reference id passed to the prolog side. 
 typedef struct pyobj_ref_node pyobj_ref_node;
 
-pyobj_ref_node *pyobj_ref_list = NULL;
+pyobj_ref_node *pyobj_ref_list = NULL;// linked list to keep all the mappings 
 
 size_t get_next_ref_id()
 {
 	size_t return_val = ref_id_counter;
 	ref_id_counter++;
 	return return_val;
-}
+}// generates a new id
+
+//this function makes a new mapping node
 pyobj_ref_node *make_pyobj_ref_node(PyObject *pynode)
 {
 	pyobj_ref_node *node = malloc(sizeof(pyobj_ref_node));
@@ -30,6 +32,7 @@ pyobj_ref_node *make_pyobj_ref_node(PyObject *pynode)
 	node->next = NULL;
 	return node;	
 }
+//adds a mapping to the list of mappings
 pyobj_ref_node *add_pyobj_ref_list(PyObject *pynode)
 {	
 	pyobj_ref_node *node = make_pyobj_ref_node(pynode);
@@ -44,6 +47,7 @@ pyobj_ref_node *add_pyobj_ref_list(PyObject *pynode)
 	}
 	return node;
 }
+//given a reference id, returns the corrosponding python object
 PyObject *get_pyobj_ref_list(size_t ref_id)
 {
 	pyobj_ref_node *current = pyobj_ref_list;
@@ -57,6 +61,7 @@ PyObject *get_pyobj_ref_list(size_t ref_id)
 	}
 	return NULL;
 }
+
 enum prolog_term_type 
 {
 	INT = 0,
@@ -144,6 +149,7 @@ int return_to_prolog(PyObject *pValue)
 		return 1;
 	}else
 	{
+		//returns an object refernce to prolog side.
 		pyobj_ref_node *node = 	add_pyobj_ref_list(pValue);
 		char str[30];
 		sprintf(str, "ref_%lu", node->ref_id);
@@ -263,11 +269,11 @@ int callpy(CTXTdecl)
 								}
 							}
 							else if(strcmp(type, "ref") == 0)
-							{       
+							{       //when a reference is passed.
 								prolog_term argument = p2p_arg(temp, 1);
 								char *argument_ref = p2c_string(argument);
 								if(strncmp("ref_", argument_ref, 4)== 0 )
-								{
+								{	//gets the reference id from the string and finds it in the list
 									argument_ref = argument_ref + 4;
 									size_t ref = strtoul(argument_ref, NULL, 0);
 									PyObject *obj = get_pyobj_ref_list(ref);
