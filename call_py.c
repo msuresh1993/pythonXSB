@@ -5,19 +5,72 @@
 //#include<alloca.h>
 #include<python2.7/Python.h>
 #include<cinterf.h>
+size_t ref_id_counter = 1;
+struct pyobj_ref_node
+{
+	PyObject *python_obj;
+	size_t ref_id;
+	struct pyobj_ref_node *next;
+};
+typedef struct pyobj_ref_node pyobj_ref_node;
 
-enum prolog_term_type {
-		INT = 0,
-		FLOAT = 1,
-		STRING = 2,
-		LIST = 3,
-		NIL = 4,
-		FUNCTOR = 5,
-		VAR = 6
+pyobj_ref_node *pyobj_ref_list = NULL;
+
+size_t get_next_ref_id()
+{
+	size_t return_val = ref_id_counter;
+	ref_id_counter++;
+	return return_val;
+}
+pyobj_ref_node *make_pyobj_ref_node(PyObject *pynode)
+{
+	pyobj_ref_node *node = malloc(sizeof(pyobj_ref_node));
+	node->python_obj = pynode;
+	node->ref_id = get_next_ref_id();
+	node->next = NULL;
+	return node;	
+}
+pyobj_ref_node *add_pyobj_ref_list(PyObject *pynode)
+{	
+	pyobj_ref_node *node = make_pyobj_ref_node(pynode);
+	if(pyobj_ref_list == NULL)
+	{
+		pyobj_ref_list = node;
+	}
+	else
+	{
+		node->next = pyobj_ref_list;
+		pyobj_ref_list = node;
+	}
+	return node;
+}
+PyObject *get_pyobj_ref_list(size_t ref_id)
+{
+	pyobj_ref_node *current = pyobj_ref_list;
+	while(current!=NULL)
+	{
+		if(current->ref_id == ref_id)
+		{
+			return current->python_obj;
+		}
+		current = current->next;
+	}
+	return NULL;
+}
+enum prolog_term_type 
+{
+	INT = 0,
+	FLOAT = 1,
+	STRING = 2,
+	LIST = 3,
+	NIL = 4,
+	FUNCTOR = 5,
+	VAR = 6
 		
 };
 
-int find_prolog_term_type(prolog_term term){
+int find_prolog_term_type(prolog_term term)
+{
 	if(is_float(term))
 		return FLOAT;
 	else if(is_int(term))
@@ -31,15 +84,17 @@ int find_prolog_term_type(prolog_term term){
 	else if(is_nil(term))
 		return NIL;
 	else if(is_functor(term))
-			return FUNCTOR;
+		return FUNCTOR;
 	else 
 		return -1;
 }
 
-int find_length_prolog_list(prolog_term V){
+int find_length_prolog_list(prolog_term V)
+{
 	prolog_term temp = V;
 	int count= 0;
-	while(!(is_nil(temp))){
+	while(!(is_nil(temp)))
+	{
 		p2p_car(temp);
 		count++;
 		temp = p2p_cdr(temp);
@@ -47,28 +102,37 @@ int find_length_prolog_list(prolog_term V){
 	return count;
 }
 
-int return_to_prolog(PyObject *pValue){
-	if(PyInt_Check(pValue)){
+int return_to_prolog(PyObject *pValue)
+{
+	if(pValue == Py_None){
+		return 1;
+	}
+	if(PyInt_Check(pValue))
+	{
 		int result = PyInt_AS_LONG(pValue);
 		extern_ctop_int(3, result);
 		return 1;
 	}
-	else if(PyFloat_Check(pValue)){
+	else if(PyFloat_Check(pValue))
+	{
 		float result = PyFloat_AS_DOUBLE(pValue);
 		extern_ctop_float(3, result);
 		return 1;
-	}else if(PyString_Check(pValue)){
+	}else if(PyString_Check(pValue))
+	{
 		char *result = PyString_AS_STRING(pValue);
 		extern_ctop_string(3, result);
 		return 1;
-	}else if(PyList_Check(pValue)){
+	}else if(PyList_Check(pValue))
+	{
 		size_t size = PyList_Size(pValue);
 		size_t i = 0;
 		prolog_term head, tail;
 		prolog_term P = p2p_new();
 		tail = P;
 		
-		for(i = 0; i < size; i++){
+		for(i = 0; i < size; i++)
+		{
 			c2p_list(CTXTc tail);
 			head = p2p_car(CTXTc tail);
 			int temp = PyInt_AS_LONG(PyList_GetItem(pValue, i));
@@ -78,15 +142,24 @@ int return_to_prolog(PyObject *pValue){
 		c2p_nil(CTXTc tail);
 		p2p_unify(P, reg_term(CTXTc 3));
 		return 1;
+	}else
+	{
+		pyobj_ref_node *node = 	add_pyobj_ref_list(pValue);
+		char str[30];
+		sprintf(str, "ref_%lu", node->ref_id);
+		extern_ctop_string(3,str);
+		return 1;
 	}
 	return 0;
 }
-void prlist2pyList(prolog_term V, PyObject *pList, int count){
+void prlist2pyList(prolog_term V, PyObject *pList, int count)
+{
 	prolog_term temp = V;
 	prolog_term head;
 	PyObject *pValue;
 	int i;
-	for(i = 0; i <count;i++){ //fill ;+i){
+	for(i = 0; i <count;i++)
+	{ //fill ;+i){
 		head = p2p_car(temp);
 		int ctemp = p2c_int(head);//currently only a list of integers, need to expand it for all types. 
 //		printf("%d\n", ctemp);
@@ -97,7 +170,8 @@ void prlist2pyList(prolog_term V, PyObject *pList, int count){
 }
 
 //todo: need to refactor this code.
-int callpy(CTXTdecl){
+int callpy(CTXTdecl)
+{
 	setenv("PYTHONPATH", ".", 1);
 	PyObject *pName, *pModule, *pFunc;
 	PyObject *pArgs, *pValue;
@@ -108,65 +182,98 @@ int callpy(CTXTdecl){
 	//char *function = ptoc_string(CTXTdeclc 2);
 	pName = PyString_FromString(module);
 	pModule = PyImport_Import(pName);
+	if(pModule == NULL)
+	{
+		return FALSE;	
+	}
 	Py_DECREF(pName);
 //	printf("%s %s", module, function);
 	V = extern_reg_term(2);
 	char *function = p2c_functor(V);
 //	printf("%d",find_prolog_term_type(V));
-	if(is_functor(V)){
+	if(is_functor(V))
+	{
 		int args_count  = p2c_arity(V);
 		
 //		printf("it recognizes function %d", args_count);	
 		pFunc = PyObject_GetAttrString(pModule, function);
-		if(pFunc && PyCallable_Check(pFunc)){
+		Py_DECREF(pModule);
+		if(pFunc && PyCallable_Check(pFunc))
+		{
 			pArgs = PyTuple_New(args_count);
 			int i;
-			for(i = 1; i <= args_count; i++){
+			for(i = 1; i <= args_count; i++)
+			{
 				temp = p2p_arg(V, i);
-				if(find_prolog_term_type(temp) != FUNCTOR){
+				if(find_prolog_term_type(temp) != FUNCTOR)
+				{
 					printf("error: illegal type for argument");
 					return FALSE;
 				}
-				else{
+				else
+				{
 					int arg_len = p2c_arity(temp);
-					if(arg_len != 2){
+					if(arg_len != 2)
+					{
 						printf("error: argument length wrong");
 						return FALSE;
 					}
-					else{
+					else
+					{
 						prolog_term arg_type = p2p_arg(temp, 2);
 						int type = find_prolog_term_type(arg_type);
-						if(find_prolog_term_type(arg_type) != STRING){
+						if(find_prolog_term_type(arg_type) != STRING)
+						{
 							printf("Error: argument type wrong %d", type);
 							return FALSE;
 						}
-						else{
+						else
+						{
 							char *type = p2c_string(arg_type);
-							if(strcmp(type, "int") == 0){
+							if(strcmp(type, "int") == 0)
+							{
 								prolog_term argument = p2p_arg(temp, 1);
 								int argument_int = p2c_int(argument);
 								pValue = PyInt_FromLong(argument_int);
 								PyTuple_SetItem(pArgs, i-1, pValue);
-							}else if(strcmp(type, "string") == 0){
+							}else if(strcmp(type, "string") == 0)
+							{
 								prolog_term argument = p2p_arg(temp, 1);
 								char *argument_char = p2c_string(argument);
 								pValue = PyString_FromString(argument_char);
 								PyTuple_SetItem(pArgs, i-1, pValue);
-							}else if(strcmp(type, "float") == 0){
+							}else if(strcmp(type, "float") == 0)
+							{
 								prolog_term argument = p2p_arg(temp, 1);
 								float argument_float = p2c_float(argument);
 								pValue = PyFloat_FromDouble(argument_float);
 								PyTuple_SetItem(pArgs, i-1, pValue);
 							}
-							else if(strcmp(type, "list") == 0){
+							else if(strcmp(type, "list") == 0)
+							{
 								
 								prolog_term argument = p2p_arg(temp, 1);
-								if(find_prolog_term_type(argument) == LIST){
+								if(find_prolog_term_type(argument) == LIST)
+								{
 									int count = find_length_prolog_list(argument);
 //									printf("check %d", count);
 									PyObject *pList = PyList_New(count);
 									prlist2pyList(argument, pList, count);
 									PyTuple_SetItem(pArgs, i-1, pList);
+								}
+							}
+							else if(strcmp(type, "ref") == 0)
+							{       
+								prolog_term argument = p2p_arg(temp, 1);
+								char *argument_ref = p2c_string(argument);
+								if(strncmp("ref_", argument_ref, 4)== 0 )
+								{
+									argument_ref = argument_ref + 4;
+									size_t ref = strtoul(argument_ref, NULL, 0);
+									PyObject *obj = get_pyobj_ref_list(ref);
+									if(obj == NULL)
+										return FALSE;
+									PyTuple_SetItem(pArgs, i-1, obj);
 								}
 							}
 						}
@@ -179,7 +286,8 @@ int callpy(CTXTdecl){
 			else
 				return FALSE;
 		}
-	}else{
+	}else
+	{
 		printf("not a functor");
 		return FALSE;
 	}
