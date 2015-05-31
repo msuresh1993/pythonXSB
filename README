@@ -6,4 +6,11 @@ To use this interface:
 
 To call a python function:
 1. callpy(MODULE_NAME, FUNCTION_NAME((parameter1,type),(parameter2,type),...),X).
-type - int, float, list, string 
+type - int, float, list, string, ref
+
+Examples:
+Simple python module that tests state being maintained, object passing and everything else. 
+callpy(dict_test, init_dict(),X).  //note: you could combine these 3 predicates but since the first object created will have the reference ref_1 				   // query 2 just directly uses it. 
+callpy(dict_test, add_dict((ref_1,ref),(5,int),(10,int)),X). // ref_1 is the id of the python object reference. hardcoded in this 
+							     //example, not necessarry to do so. 
+callpy(dict_test, get_value((ref_1,ref),(5,int)),X). 
