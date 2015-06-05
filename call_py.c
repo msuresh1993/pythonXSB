@@ -70,18 +70,32 @@ enum prolog_term_type
 	LIST = 3,
 	NIL = 4,
 	FUNCTOR = 5,
-	VAR = 6
-		
+	VAR = 6,
+	REF = 7
 };
-
+int is_reference(prolog_term term)
+{
+	char *result = p2c_string(term);
+	if(strncmp("ref_", result, 4)== 0 ){
+		printf("yes");
+		return 1;
+	}
+	printf("no");
+	return 0;
+}
 int find_prolog_term_type(prolog_term term)
 {
 	if(is_float(term))
 		return FLOAT;
 	else if(is_int(term))
 		return INT;
-	else if(is_string(term))
+	else if(is_string(term)){
+		
+		if(is_reference(term)){
+			return REF;
+		}	
 		return STRING;
+	}
 	else if(is_list(term))
 		return LIST;
 	else if(is_var(term))
@@ -174,13 +188,63 @@ void prlist2pyList(prolog_term V, PyObject *pList, int count)
 		temp = p2p_cdr(temp);
 	}	
 }
+int set_python_argument(prolog_term temp, PyObject *pArgs,int i)
+{
+	PyObject *pValue;
+	if(find_prolog_term_type(temp) == INT)
+	{
+		prolog_term argument = temp;
+		int argument_int = p2c_int(argument);
+		pValue = PyInt_FromLong(argument_int);
+		PyTuple_SetItem(pArgs, i-1, pValue);
+	}else if(find_prolog_term_type(temp) == STRING)
+	{
+		prolog_term argument = temp;
+		char *argument_char = p2c_string(argument);
+		pValue = PyString_FromString(argument_char);
+		PyTuple_SetItem(pArgs, i-1, pValue);
+	}else if(find_prolog_term_type(temp) == FLOAT)
+	{
+		prolog_term argument = temp;
+		float argument_float = p2c_float(argument);
+		pValue = PyFloat_FromDouble(argument_float);
+		PyTuple_SetItem(pArgs, i-1, pValue);
+	}
+	else if(find_prolog_term_type(temp) == LIST)
+	{
 
+		prolog_term argument = temp;
+		if(find_prolog_term_type(argument) == LIST)
+		{
+			int count = find_length_prolog_list(argument);
+			//									printf("check %d", count);
+			PyObject *pList = PyList_New(count);
+			prlist2pyList(argument, pList, count);
+			PyTuple_SetItem(pArgs, i-1, pList);
+		}
+	}
+	else if(find_prolog_term_type(temp) == REF)
+	{       //when a reference is passed.
+		prolog_term argument = temp;
+		char *argument_ref = p2c_string(argument);
+		if(strncmp("ref_", argument_ref, 4)== 0 )
+		{	//gets the reference id from the string and finds it in the list
+			argument_ref = argument_ref + 4;
+			size_t ref = strtoul(argument_ref, NULL, 0);
+			PyObject *obj = get_pyobj_ref_list(ref);
+			if(obj == NULL)
+				return FALSE;
+			PyTuple_SetItem(pArgs, i-1, obj);
+		}
+	}
+	return TRUE;
+}
 //todo: need to refactor this code.
 int callpy(CTXTdecl)
 {
 	setenv("PYTHONPATH", ".", 1);
-	PyObject *pName, *pModule, *pFunc;
-	PyObject *pArgs, *pValue;
+	PyObject *pName = NULL, *pModule = NULL, *pFunc = NULL;
+	PyObject *pArgs = NULL, *pValue = NULL;
 	//PyObject *pArgs, *pValue;
 	prolog_term V, temp;
 	Py_Initialize();
@@ -193,15 +257,15 @@ int callpy(CTXTdecl)
 		return FALSE;	
 	}
 	Py_DECREF(pName);
-//	printf("%s %s", module, function);
+	//	printf("%s %s", module, function);
 	V = extern_reg_term(2);
 	char *function = p2c_functor(V);
-//	printf("%d",find_prolog_term_type(V));
+	//	printf("%d",find_prolog_term_type(V));
 	if(is_functor(V))
 	{
 		int args_count  = p2c_arity(V);
-		
-//		printf("it recognizes function %d", args_count);	
+
+		//		printf("it recognizes function %d", args_count);	
 		pFunc = PyObject_GetAttrString(pModule, function);
 		Py_DECREF(pModule);
 		if(pFunc && PyCallable_Check(pFunc))
@@ -211,88 +275,21 @@ int callpy(CTXTdecl)
 			for(i = 1; i <= args_count; i++)
 			{
 				temp = p2p_arg(V, i);
-				if(find_prolog_term_type(temp) != FUNCTOR)
+				printf("%d", i);
+				if(!(set_python_argument(temp, pArgs, i)))
 				{
-					printf("error: illegal type for argument");
 					return FALSE;
 				}
-				else
-				{
-					int arg_len = p2c_arity(temp);
-					if(arg_len != 2)
-					{
-						printf("error: argument length wrong");
-						return FALSE;
-					}
-					else
-					{
-						prolog_term arg_type = p2p_arg(temp, 2);
-						int type = find_prolog_term_type(arg_type);
-						if(find_prolog_term_type(arg_type) != STRING)
-						{
-							printf("Error: argument type wrong %d", type);
-							return FALSE;
-						}
-						else
-						{
-							char *type = p2c_string(arg_type);
-							if(strcmp(type, "int") == 0)
-							{
-								prolog_term argument = p2p_arg(temp, 1);
-								int argument_int = p2c_int(argument);
-								pValue = PyInt_FromLong(argument_int);
-								PyTuple_SetItem(pArgs, i-1, pValue);
-							}else if(strcmp(type, "string") == 0)
-							{
-								prolog_term argument = p2p_arg(temp, 1);
-								char *argument_char = p2c_string(argument);
-								pValue = PyString_FromString(argument_char);
-								PyTuple_SetItem(pArgs, i-1, pValue);
-							}else if(strcmp(type, "float") == 0)
-							{
-								prolog_term argument = p2p_arg(temp, 1);
-								float argument_float = p2c_float(argument);
-								pValue = PyFloat_FromDouble(argument_float);
-								PyTuple_SetItem(pArgs, i-1, pValue);
-							}
-							else if(strcmp(type, "list") == 0)
-							{
-								
-								prolog_term argument = p2p_arg(temp, 1);
-								if(find_prolog_term_type(argument) == LIST)
-								{
-									int count = find_length_prolog_list(argument);
-//									printf("check %d", count);
-									PyObject *pList = PyList_New(count);
-									prlist2pyList(argument, pList, count);
-									PyTuple_SetItem(pArgs, i-1, pList);
-								}
-							}
-							else if(strcmp(type, "ref") == 0)
-							{       //when a reference is passed.
-								prolog_term argument = p2p_arg(temp, 1);
-								char *argument_ref = p2c_string(argument);
-								if(strncmp("ref_", argument_ref, 4)== 0 )
-								{	//gets the reference id from the string and finds it in the list
-									argument_ref = argument_ref + 4;
-									size_t ref = strtoul(argument_ref, NULL, 0);
-									PyObject *obj = get_pyobj_ref_list(ref);
-									if(obj == NULL)
-										return FALSE;
-									PyTuple_SetItem(pArgs, i-1, obj);
-								}
-							}
-						}
-					}
-				}
 			}
-			pValue = PyObject_CallObject(pFunc, pArgs);
-			if(return_to_prolog(pValue))
-				return TRUE;
-			else
-				return FALSE;
+
 		}
-	}else
+		pValue = PyObject_CallObject(pFunc, pArgs);
+		if(return_to_prolog(pValue))
+			return TRUE;
+		else
+			return FALSE;
+	}
+	else
 	{
 		printf("not a functor");
 		return FALSE;
