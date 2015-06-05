@@ -77,10 +77,8 @@ int is_reference(prolog_term term)
 {
 	char *result = p2c_string(term);
 	if(strncmp("ref_", result, 4)== 0 ){
-		printf("yes");
 		return 1;
 	}
-	printf("no");
 	return 0;
 }
 int find_prolog_term_type(prolog_term term)
