@@ -23,6 +23,11 @@ size_t get_next_ref_id()
 	return return_val;
 }// generates a new id
 
+//region : function decleration(s)
+int convert_pyObj_prObj(PyObject *, prolog_term *);
+int convert_prObj_pyObj(prolog_term , PyObject **);
+//endregion
+
 //this function makes a new mapping node
 pyobj_ref_node *make_pyobj_ref_node(PyObject *pynode)
 {
@@ -32,6 +37,7 @@ pyobj_ref_node *make_pyobj_ref_node(PyObject *pynode)
 	node->next = NULL;
 	return node;	
 }
+
 //adds a mapping to the list of mappings
 pyobj_ref_node *add_pyobj_ref_list(PyObject *pynode)
 {	
@@ -47,6 +53,8 @@ pyobj_ref_node *add_pyobj_ref_list(PyObject *pynode)
 	}
 	return node;
 }
+
+
 //given a reference id, returns the corrosponding python object
 PyObject *get_pyobj_ref_list(size_t ref_id)
 {
@@ -152,8 +160,10 @@ int return_to_prolog(PyObject *pValue)
 		{
 			c2p_list(CTXTc tail);
 			head = p2p_car(CTXTc tail);
-			int temp = PyInt_AS_LONG(PyList_GetItem(pValue, i));
+			PyObject *pyObj = PyList_GetItem(pValue, i);
+			int temp = PyInt_AS_LONG(pyObj);
 			c2p_int(temp, head);
+			//convert_pyObj_prObj(pyObj, &head);				
 			tail = p2p_cdr(tail);
 		}
 		c2p_nil(CTXTc tail);
@@ -170,21 +180,134 @@ int return_to_prolog(PyObject *pValue)
 	}
 	return 0;
 }
-void prlist2pyList(prolog_term V, PyObject *pList, int count)
+int prlist2pyList(prolog_term V, PyObject *pList, int count)
 {
 	prolog_term temp = V;
 	prolog_term head;
-	PyObject *pValue;
+	// PyObject *pValue;
 	int i;
 	for(i = 0; i <count;i++)
 	{ //fill ;+i){
 		head = p2p_car(temp);
-		int ctemp = p2c_int(head);//currently only a list of integers, need to expand it for all types. 
-//		printf("%d\n", ctemp);
-		pValue = PyInt_FromLong(ctemp);
-		PyList_SetItem(pList, i, pValue);
+		// int ctemp = p2c_int(head);//currently only a list of integers, need to expand it for all types. 
+		// pValue = PyInt_FromLong(ctemp);
+		PyObject *pyObj = NULL;
+		if( !convert_prObj_pyObj(head, &pyObj))
+			return FALSE;
+		PyList_SetItem(pList, i, pyObj);
 		temp = p2p_cdr(temp);
 	}	
+	return TRUE;
+}
+
+int convert_pyObj_prObj(PyObject *pyObj, prolog_term *prTerm)
+{
+	if(pyObj == Py_None){
+		return 1;// todo: check this case for a list with a none in the list. how does prolog side react 
+	}
+	if(PyInt_Check(pyObj))
+	{
+		int result = PyInt_AS_LONG(pyObj);
+		//extern_ctop_int(3, result);
+		c2p_int(result, *prTerm);
+		return 1;
+	}
+	else if(PyFloat_Check(pyObj))
+	{
+		float result = PyFloat_AS_DOUBLE(pyObj);
+		//extern_ctop_float(3, result);
+		c2p_float(result, *prTerm);
+		return 1;
+	}else if(PyString_Check(pyObj))
+	{
+		char *result = PyString_AS_STRING(pyObj);
+		//extern_ctop_string(3, result);
+		c2p_string(result, *prTerm);
+		return 1;
+	}else if(PyList_Check(pyObj))
+	{
+		size_t size = PyList_Size(pyObj);
+		size_t i = 0;
+		prolog_term head, tail;
+		prolog_term P = p2p_new();
+		tail = P;
+		
+		for(i = 0; i < size; i++)
+		{
+			c2p_list(CTXTc tail);
+			head = p2p_car(CTXTc tail);
+			PyObject *pyObjInner = PyList_GetItem(pyObj, i);
+			//int temp = PyInt_AS_LONG(pyObj);
+			//c2p_int(temp, head);
+			convert_pyObj_prObj(pyObjInner, &head);				
+			tail = p2p_cdr(tail);
+		}
+		c2p_nil(CTXTc tail);
+		//p2p_unify(P, reg_term(CTXTc 3));
+		return 1;
+	}else
+	{
+		//returns an object refernce to prolog side.
+		pyobj_ref_node *node = 	add_pyobj_ref_list(pyObj);
+		char str[30];
+		sprintf(str, "ref_%lu", node->ref_id);
+		c2p_string(str, *prTerm);
+		//extern_ctop_string(3,str);
+		return 1;
+	}
+}
+int convert_prObj_pyObj(prolog_term prTerm, PyObject **pyObj)
+{
+	if(find_prolog_term_type(prTerm) == INT)
+	{
+		prolog_term argument = prTerm;
+		int argument_int = p2c_int(argument);
+		*pyObj = PyInt_FromLong(argument_int);
+		return TRUE;
+	}else if(find_prolog_term_type(prTerm) == STRING)
+	{
+		prolog_term argument = prTerm;
+		char *argument_char = p2c_string(argument);
+		*pyObj = PyString_FromString(argument_char);
+		return TRUE;
+	}else if(find_prolog_term_type(prTerm) == FLOAT)
+	{
+		prolog_term argument = prTerm;
+		float argument_float = p2c_float(argument);
+		*pyObj = PyFloat_FromDouble(argument_float);
+		return TRUE;
+	}
+	else if(find_prolog_term_type(prTerm) == LIST)
+	{
+
+		prolog_term argument = prTerm;
+		if(find_prolog_term_type(argument) == LIST)
+		{
+			int count = find_length_prolog_list(argument);
+			PyObject *pList = PyList_New(count);
+			if(!prlist2pyList(argument, pList, count))
+				return FALSE;
+			*pyObj = pList;
+			return TRUE;
+		}
+	}
+	else if(find_prolog_term_type(prTerm) == REF)
+	{       //when a reference is passed.
+		prolog_term argument = prTerm;
+		char *argument_ref = p2c_string(argument);
+		if(strncmp("ref_", argument_ref, 4)== 0 )
+		{	//gets the reference id from the string and finds it in the list
+			argument_ref = argument_ref + 4;
+			size_t ref = strtoul(argument_ref, NULL, 0);
+			PyObject *obj = get_pyobj_ref_list(ref);
+			if(obj == NULL)
+				return FALSE;
+			*pyObj = obj;
+			return TRUE;
+		}
+	}
+
+	return FALSE;
 }
 int set_python_argument(prolog_term temp, PyObject *pArgs,int i)
 {
@@ -212,14 +335,13 @@ int set_python_argument(prolog_term temp, PyObject *pArgs,int i)
 	{
 
 		prolog_term argument = temp;
-		if(find_prolog_term_type(argument) == LIST)
-		{
-			int count = find_length_prolog_list(argument);
-			//									printf("check %d", count);
-			PyObject *pList = PyList_New(count);
-			prlist2pyList(argument, pList, count);
-			PyTuple_SetItem(pArgs, i-1, pList);
-		}
+		
+		int count = find_length_prolog_list(argument);
+		PyObject *pList = PyList_New(count);
+		if (! prlist2pyList(argument, pList, count))
+			return FALSE;
+		PyTuple_SetItem(pArgs, i-1, pList);
+		
 	}
 	else if(find_prolog_term_type(temp) == REF)
 	{       //when a reference is passed.
@@ -235,6 +357,7 @@ int set_python_argument(prolog_term temp, PyObject *pArgs,int i)
 			PyTuple_SetItem(pArgs, i-1, obj);
 		}
 	}
+
 	return TRUE;
 }
 //todo: need to refactor this code.
@@ -255,15 +378,12 @@ int callpy(CTXTdecl)
 		return FALSE;	
 	}
 	Py_DECREF(pName);
-	//	printf("%s %s", module, function);
 	V = extern_reg_term(2);
 	char *function = p2c_functor(V);
-	//	printf("%d",find_prolog_term_type(V));
 	if(is_functor(V))
 	{
-		int args_count  = p2c_arity(V);
+		int args_count = p2c_arity(V);
 
-		//		printf("it recognizes function %d", args_count);	
 		pFunc = PyObject_GetAttrString(pModule, function);
 		Py_DECREF(pModule);
 		if(pFunc && PyCallable_Check(pFunc))
@@ -273,13 +393,16 @@ int callpy(CTXTdecl)
 			for(i = 1; i <= args_count; i++)
 			{
 				temp = p2p_arg(V, i);
-				printf("%d", i);
 				if(!(set_python_argument(temp, pArgs, i)))
 				{
 					return FALSE;
 				}
 			}
 
+		}
+		else
+		{
+			return FALSE;
 		}
 		pValue = PyObject_CallObject(pFunc, pArgs);
 		if(return_to_prolog(pValue))
@@ -289,7 +412,6 @@ int callpy(CTXTdecl)
 	}
 	else
 	{
-		printf("not a functor");
 		return FALSE;
 	}
 	return TRUE;
