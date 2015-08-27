@@ -175,7 +175,7 @@ int return_to_prolog(PyObject *pValue)
 		sprintf(str, "%p", node);
 		//extern_ctop_string(3,str);
 	  prolog_term ref = p2p_new();
-		c2p_functor("PyObject", 1, ref);
+		c2p_functor("pyObject", 1, ref);
 		prolog_term ref_inner = p2p_arg(ref, 1);
     c2p_string(str, ref_inner);		
 		p2p_unify(ref, reg_term(CTXTc 3));	
@@ -252,10 +252,15 @@ int convert_pyObj_prObj(PyObject *pyObj, prolog_term *prTerm)
 	{
 		//returns an object refernce to prolog side.
 		pyobj_ref_node *node = 	add_pyobj_ref_list(pyObj);
+		//printf("node : %p", node);	
 		char str[30];
-		sprintf(str, "ref_%lu", node->ref_id);
-		c2p_string(str, *prTerm);
+		sprintf(str, "%p", node);
 		//extern_ctop_string(3,str);
+	  	prolog_term ref = p2p_new();
+		c2p_functor("pyObject", 1, ref);
+		prolog_term ref_inner = p2p_arg(ref, 1);
+    	c2p_string(str, ref_inner);		
+		p2p_unify(ref, *prTerm);	
 		return 1;
 	}
 }
@@ -294,22 +299,36 @@ int convert_prObj_pyObj(prolog_term prTerm, PyObject **pyObj)
 			return TRUE;
 		}
 	}
-	else if(find_prolog_term_type(prTerm) == REF)
-	{       //when a reference is passed.
-		prolog_term argument = prTerm;
-		char *argument_ref = p2c_string(argument);
-		if(strncmp("ref_", argument_ref, 4)== 0 )
-		{	//gets the reference id from the string and finds it in the list
-			argument_ref = argument_ref + 4;
-			size_t ref = strtoul(argument_ref, NULL, 0);
-			PyObject *obj = get_pyobj_ref_list(ref);
-			if(obj == NULL)
-				return FALSE;
-			*pyObj = obj;
-			return TRUE;
-		}
-	}
+	// else if(find_prolog_term_type(prTerm) == REF)
+	// {       //when a reference is passed.
+	// 	prolog_term argument = prTerm;
+	// 	char *argument_ref = p2c_string(argument);
+	// 	if(strncmp("ref_", argument_ref, 4)== 0 )
+	// 	{	//gets the reference id from the string and finds it in the list
+	// 		argument_ref = argument_ref + 4;
+	// 		size_t ref = strtoul(argument_ref, NULL, 0);
+	// 		PyObject *obj = get_pyobj_ref_list(ref);
+	// 		if(obj == NULL)
+	// 			return FALSE;
+	// 		*pyObj = obj;
+	// 		return TRUE;
+	// 	}
+	// }
+	else if (find_prolog_term_type(prTerm) == FUNCTOR)
+	{
+		//region begin : handle pyobject term
+		if(strcmp(p2c_functor(prTerm),"pyObject") == 0)
+		{
+			prolog_term ref = p2p_arg(prTerm, 1);
+			char *node_pointer = p2c_string(ref); 
+			pyobj_ref_node *pyobj_ref = (pyobj_ref_node *)strtol(node_pointer,NULL, 0);  
+			//pyobj_ref_node *node = (pyobj_ref_node *)(node_pointer); 
+			*pyObj = pyobj_ref->python_obj;
 
+		}
+		//end region
+
+	}
 	return FALSE;
 }
 int set_python_argument(prolog_term temp, PyObject *pArgs,int i)
@@ -351,32 +370,35 @@ int set_python_argument(prolog_term temp, PyObject *pArgs,int i)
 	}
 	else if (find_prolog_term_type(temp) == FUNCTOR)
 	{
-		//begin handle pyobject term
-		prolog_term ref = p2p_arg(temp, 1);
-		char *node_pointer = p2c_string(ref); 
-		pyobj_ref_node *pyobj_ref = (pyobj_ref_node *)strtol(node_pointer,NULL, 0);  
-		//pyobj_ref_node *node = (pyobj_ref_node *)(node_pointer); 
-		pValue = pyobj_ref->python_obj;
+		//region begin : handle pyobject term
+		if(strcmp(p2c_functor(temp),"pyObject") == 0)
+		{
+			prolog_term ref = p2p_arg(temp, 1);
+			char *node_pointer = p2c_string(ref); 
+			pyobj_ref_node *pyobj_ref = (pyobj_ref_node *)strtol(node_pointer,NULL, 0);  
+			//pyobj_ref_node *node = (pyobj_ref_node *)(node_pointer); 
+			pValue = pyobj_ref->python_obj;
 
-		//printf("set_argN: %p %zu" , pValue, pyobj_ref->ref_id);
-		PyTuple_SetItem(pArgs, i - 1 , pValue);
-		//end handle pyobject term
-
-	}
-	else if(find_prolog_term_type(temp) == REF)
-	{       //when a reference is passed.
-		prolog_term argument = temp;
-		char *argument_ref = p2c_string(argument);
-		if(strncmp("ref_", argument_ref, 4)== 0 )
-		{	//gets the reference id from the string and finds it in the list
-			argument_ref = argument_ref + 4;
-			size_t ref = strtoul(argument_ref, NULL, 0);
-			PyObject *obj = get_pyobj_ref_list(ref);
-			if(obj == NULL)
-				return FALSE;
-			PyTuple_SetItem(pArgs, i-1, obj);
+			//printf("set_argN: %p %zu" , pValue, pyobj_ref->ref_id);
+			PyTuple_SetItem(pArgs, i - 1 , pValue);
 		}
+		//end region
+
 	}
+	// else if(find_prolog_term_type(temp) == REF)
+	// {       //when a reference is passed.
+	// 	prolog_term argument = temp;
+	// 	char *argument_ref = p2c_string(argument);
+	// 	if(strncmp("ref_", argument_ref, 4)== 0 )
+	// 	{	//gets the reference id from the string and finds it in the list
+	// 		argument_ref = argument_ref + 4;
+	// 		size_t ref = strtoul(argument_ref, NULL, 0);
+	// 		PyObject *obj = get_pyobj_ref_list(ref);
+	// 		if(obj == NULL)
+	// 			return FALSE;
+	// 		PyTuple_SetItem(pArgs, i-1, obj);
+	// 	}
+	// }
 
 	return TRUE;
 }
