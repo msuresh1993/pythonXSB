@@ -5,7 +5,7 @@
 //#include<alloca.h>
 #include<python2.7/Python.h>
 #include<cinterf.h>
-size_t ref_id_counter = 1; //the reference id that is passed to the prolog side
+size_t ref_id_counter = 20; //the reference id that is passed to the prolog side
 struct pyobj_ref_node
 {
 	PyObject *python_obj;
@@ -95,11 +95,8 @@ int find_prolog_term_type(prolog_term term)
 		return FLOAT;
 	else if(is_int(term))
 		return INT;
-	else if(is_string(term)){
-		
-		if(is_reference(term)){
-			return REF;
-		}	
+	else if(is_string(term)){	
+		//printf("found string");
 		return STRING;
 	}
 	else if(is_list(term))
@@ -173,7 +170,7 @@ int return_to_prolog(PyObject *pValue)
 	{
 		//returns an object refernce to prolog side.
 		pyobj_ref_node *node = 	add_pyobj_ref_list(pValue);
-		printf("node : %p", node);	
+		//printf("node : %p", node);	
 	char str[30];
 		sprintf(str, "%p", node);
 		//extern_ctop_string(3,str);
@@ -319,21 +316,8 @@ int set_python_argument(prolog_term temp, PyObject *pArgs,int i)
 {
 	PyObject *pValue;
 	
-	if (find_prolog_term_type(temp) == FUNCTOR)
-	{
-		//begin handle pyobject term
-		prolog_term ref = p2p_arg(temp, 1);
-		char *node_pointer = p2c_string(ref); 
-		pyobj_ref_node *pyobj_ref = (pyobj_ref_node *)strtol(node_pointer,NULL, 0);  
-		//pyobj_ref_node *node = (pyobj_ref_node *)(node_pointer); 
-		pValue = pyobj_ref->python_obj;
-
-		printf("set_argN: %p %zu" , pValue, pyobj_ref->ref_id);
-		PyTuple_SetItem(pArgs, i - 1 , pValue);
-		//end handle pyobject term
-
-	}
-	else if(find_prolog_term_type(temp) == INT)
+	
+	if(find_prolog_term_type(temp) == INT)
 	{
 		prolog_term argument = temp;
 		int argument_int = p2c_int(argument);
@@ -343,6 +327,7 @@ int set_python_argument(prolog_term temp, PyObject *pArgs,int i)
 	{
 		prolog_term argument = temp;
 		char *argument_char = p2c_string(argument);
+		//printf("%s", argument_char);
 		pValue = PyString_FromString(argument_char);
 		PyTuple_SetItem(pArgs, i-1, pValue);
 	}else if(find_prolog_term_type(temp) == FLOAT)
@@ -363,6 +348,20 @@ int set_python_argument(prolog_term temp, PyObject *pArgs,int i)
 			return FALSE;
 		PyTuple_SetItem(pArgs, i-1, pList);
 		
+	}
+	else if (find_prolog_term_type(temp) == FUNCTOR)
+	{
+		//begin handle pyobject term
+		prolog_term ref = p2p_arg(temp, 1);
+		char *node_pointer = p2c_string(ref); 
+		pyobj_ref_node *pyobj_ref = (pyobj_ref_node *)strtol(node_pointer,NULL, 0);  
+		//pyobj_ref_node *node = (pyobj_ref_node *)(node_pointer); 
+		pValue = pyobj_ref->python_obj;
+
+		//printf("set_argN: %p %zu" , pValue, pyobj_ref->ref_id);
+		PyTuple_SetItem(pArgs, i - 1 , pValue);
+		//end handle pyobject term
+
 	}
 	else if(find_prolog_term_type(temp) == REF)
 	{       //when a reference is passed.
@@ -427,7 +426,7 @@ int callpy(CTXTdecl)
 		}
 		
 		pValue = PyObject_CallObject(pFunc, pArgs);
-		printf("return call : %p\n",pValue); 
+		//printf("return call : %p\n",pValue); 
 		if(return_to_prolog(pValue))
 			return TRUE;
 		else
