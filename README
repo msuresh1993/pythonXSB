@@ -1,4 +1,4 @@
-do: need proper README
+Moved to https://bitbucket.org/pythonxsb/
 
 To use this interface:
 1. Open the file ld_pymod.P and change the python header file directory and xsb directory 
